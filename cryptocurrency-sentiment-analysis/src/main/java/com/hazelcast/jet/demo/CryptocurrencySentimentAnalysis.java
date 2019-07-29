@@ -42,7 +42,6 @@ import static com.hazelcast.jet.demo.util.Util.MAP_NAME_5_MINUTE;
 import static com.hazelcast.jet.demo.util.Util.isMissing;
 import static com.hazelcast.jet.demo.util.Util.loadProperties;
 import static com.hazelcast.jet.demo.util.Util.loadTerms;
-import static com.hazelcast.jet.demo.util.Util.startConsolePrinterThread;
 import static com.hazelcast.jet.function.Functions.entryKey;
 import static com.hazelcast.jet.pipeline.Sinks.map;
 import static com.hazelcast.jet.pipeline.WindowDefinition.sliding;
@@ -100,16 +99,18 @@ public class CryptocurrencySentimentAnalysis {
 
     public static void main(String[] args) {
         System.out.println("DISCLAIMER: This is not investment advice");
-
+        Util util = new Util();
+        util.connect();
         Pipeline pipeline = buildPipeline();
         // Start Jet
         JetInstance jet = Jet.newJetInstance();
-        startConsolePrinterThread(jet);
+        util.startConsolePrinterThread(jet);
         try {
             // Perform the computation
             jet.newJob(pipeline).join();
         } finally {
-            Util.stopConsolePrinterThread();
+            util.close();
+            util.stopConsolePrinterThread();
             Jet.shutdownAll();
         }
     }

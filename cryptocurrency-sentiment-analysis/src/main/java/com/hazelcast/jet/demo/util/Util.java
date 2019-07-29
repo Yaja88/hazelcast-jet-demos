@@ -4,6 +4,13 @@ import com.hazelcast.jet.JetInstance;
 import com.hazelcast.jet.datamodel.Tuple2;
 import com.hazelcast.jet.demo.common.CoinDefs;
 import java.io.IOException;
+import java.io.InputStream;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -34,10 +41,33 @@ public class Util {
     private static final String ANSI_GREEN = "\u001B[32m";
     private static final String ANSI_YELLOW = "\u001B[33m";
 
-    private Util() {
+    private Connection conn;
+
+    public void connect() {
+            Properties properties = new Properties();
+            String propertiesFileName = "twitter-security.properties";
+            InputStream inputStream = getClass().getClassLoader().getResourceAsStream(propertiesFileName);
+            if(inputStream != null) {
+                try{
+                    properties.load(inputStream);
+                    this.conn = DriverManager.getConnection(properties.getProperty("postgres_url"));
+                } catch (Exception ex) {
+                    System.out.println(ex.toString());
+                }
+            }
     }
 
-    public static void startConsolePrinterThread(JetInstance jet) {
+    public void close() {
+        if (this.conn != null) {
+            try {
+                conn.close();
+            } catch (Exception ex) {
+                System.out.print(ex);
+            }
+        }
+    }
+
+    public static void startConsolePrinterThreadPrint(JetInstance jet) {
         new Thread(() -> {
             Map<String, Tuple2<Double, Long>> map30secs = jet.getMap(MAP_NAME_30_SECONDS);
             Map<String, Tuple2<Double, Long>> map1min = jet.getMap(MAP_NAME_1_MINUTE);
@@ -69,6 +99,45 @@ public class Util {
         }).start();
     }
 
+    public  void startConsolePrinterThread(JetInstance jet) {
+        new Thread(() -> {
+            Map<String, Tuple2<Double, Long>> map30secs = jet.getMap(MAP_NAME_30_SECONDS);
+            Map<String, Tuple2<Double, Long>> map1min = jet.getMap(MAP_NAME_1_MINUTE);
+            Map<String, Tuple2<Double, Long>> map5min = jet.getMap(MAP_NAME_5_MINUTE);
+
+            while (running) {
+                long currentUTCEpochTime = OffsetDateTime.now(ZoneOffset.UTC).toEpochSecond() * 1000;
+
+                Set<String> coins = new HashSet<>();
+
+                if (map30secs.isEmpty()) {
+                    continue;
+                }
+
+                coins.addAll(map30secs.keySet());
+                coins.addAll(map1min.keySet());
+                coins.addAll(map5min.keySet());
+
+                String insertStatement = "INSERT INTO %s (timestamp,symbol,seconds30,seconds60,seconds300) VALUES %s";
+                StringBuilder values = new StringBuilder();
+                for(String coin : coins) {
+                    values.append(String.format("(%d,%s,%f,%f,%f),",
+                           currentUTCEpochTime, "'"+coin+"'", map30secs.get(coin).f0(), map1min.get(coin).f0(), map5min.get(coin).f0()));
+                }
+                values.deleteCharAt(values.length()-1);
+                try {
+                    Statement statement = conn.createStatement();
+                    String insertion = String.format(insertStatement, "sentiment_twitter", values.toString());
+                    System.out.println(currentUTCEpochTime);
+                    statement.executeUpdate(insertion);
+                } catch (Exception ex) {
+                    System.out.println(ex.toString());
+                }
+                LockSupport.parkNanos(MILLISECONDS.toNanos(PRINT_INTERNAL_MILLIS));
+            }
+        }).start();
+    }
+
     /**
      * Gets the full name given the code and pads it to a length of 16 characters
      */
@@ -80,7 +149,7 @@ public class Util {
         return name;
     }
 
-    public static void stopConsolePrinterThread() {
+    public void stopConsolePrinterThread() {
         running = false;
     }
 

@@ -16,6 +16,7 @@ import com.hazelcast.jet.datamodel.KeyedWindowResult;
 import com.hazelcast.jet.datamodel.Tuple2;
 import com.hazelcast.jet.datamodel.Tuple3;
 import com.hazelcast.jet.demo.common.CoinDefs;
+import com.hazelcast.jet.demo.util.Util;
 import com.hazelcast.jet.function.FunctionEx;
 import com.hazelcast.jet.function.ToLongFunctionEx;
 
@@ -40,8 +41,6 @@ import static com.hazelcast.jet.demo.util.Util.MAP_NAME_30_SECONDS;
 import static com.hazelcast.jet.demo.util.Util.MAP_NAME_5_MINUTE;
 import static com.hazelcast.jet.demo.util.Util.loadProperties;
 import static com.hazelcast.jet.demo.util.Util.loadTerms;
-import static com.hazelcast.jet.demo.util.Util.startConsolePrinterThread;
-import static com.hazelcast.jet.demo.util.Util.stopConsolePrinterThread;
 import static com.hazelcast.jet.function.Functions.entryKey;
 import static java.util.Collections.singletonList;
 /**
@@ -102,16 +101,18 @@ public class CryptocurrencySentimentAnalysisWithCoreAPI {
 
     public static void main(String[] args) {
         System.out.println("DISCLAIMER: This is not an investment advice");
-
+        Util util = new Util();
+        util.connect();
         DAG dag = buildDag();
         // Start Jet
         JetInstance jet = Jet.newJetInstance();
-        startConsolePrinterThread(jet);
+        util.startConsolePrinterThread(jet);
         try {
             // Perform the computation
             jet.newJob(dag).join();
         } finally {
-            stopConsolePrinterThread();
+            util.close();
+            util.stopConsolePrinterThread();
             Jet.shutdownAll();
         }
     }
